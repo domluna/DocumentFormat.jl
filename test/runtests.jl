@@ -793,7 +793,14 @@ end
         (one,
          x -> (true,
                false))"""
-  @test format("foo() = (one, x -> (true, false))"; max_width=20) == str
+    @test format("foo() = (one, x -> (true, false))"; max_width=20) == str
+
+    str = """
+    @somemacro function (fcall_ |
+                         fcall_)
+                   body_
+               end"""
+    @test format("@somemacro function (fcall_ | fcall_) body_ end"; max_width=1) == str
 end
 
 end
