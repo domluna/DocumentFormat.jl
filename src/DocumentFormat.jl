@@ -65,6 +65,7 @@ include("pretty.jl")
 #=     s = State(indent_width, max_width, 0, 1, 0, d) =#
 #=     x = CSTParser.parse(text, true) =#
 #=     edits = flatten(x, s) =#
+#=     return edits =#
 #=     io = IOBuffer() =#
 #=     print_tree(io, edits, s) =#
 #=     comments = gather_comments(s, edits.endline+1, length(s.doc.ranges)-1) =#
@@ -80,9 +81,6 @@ function format(text::AbstractString; indent_width=4, max_width=80)
     if e.startline != 1
         e = merge_edits(Edit(1, 1, d.text[d.ranges[1]]), e, s)
     end
-    @info e
-    @info length(d.ranges)
-    @info text
     if e.endline != length(d.ranges)
         e = merge_edits(e, Edit(length(d.ranges), length(d.ranges), text[d.ranges[end]]), s)
     end
