@@ -45,6 +45,7 @@ Base.length(e::Edit) = length(e.text)
 #
 # b
 #
+# ==
 function merge_edits(a::Edit, b::Edit, s::State; join_lines=false, indent::Indent=nothing)
 
     if (a.startline == b.startline || a.endline == b.endline) && indent == nothing
@@ -723,10 +724,12 @@ function pretty(x::T, s::State, indent::Indent=nothing) where T <: Union{CSTPars
     e
 end
 
+# A where B
+# should format B prior to A
 function pretty(x::CSTParser.WhereOpCall, s::State, indent::Indent=nothing)
     indent = indent == nothing ? s.line_offset : indent
     line_offset = indent
-    @info "$(typeof(x)) line_offset = $(line_offset), indent = $(indent)"
+    @info "WHEREOP" s.line_offset indent
 
     e = pretty(x.arg1, s, indent)
     s.line_offset += 1
@@ -734,9 +737,8 @@ function pretty(x::CSTParser.WhereOpCall, s::State, indent::Indent=nothing)
     s.line_offset += 1
 
     last_line = findlast("\n" * repeat(" ",  indent), e.text)
-    indent += last_line != nothing ? length(e) - last(last_line) : length(e)
-
-    @info "after WHERE line offset = $(line_offset), indent = $(indent)"
+    indent += last_line !== nothing ? length(e) - last(last_line) : length(e)
+    @info "WHEREOP has indent changed ?" line_offset indent
 
     CSTParser.is_lbrace(x.args[1]) && (indent += 1)
 
