@@ -1,6 +1,4 @@
 
-
-
 # String[]
 struct Edit{T<:CSTParser.LeafNode}
     startline::Int
@@ -14,7 +12,6 @@ merge(e::Edit{T}, s::String) where {T} = Edit{T}(e.startline, e.endline, e.text 
 #= nl(startline, endline) = Edit(startline, endline, "\n") =#
 #= nest(startline, endline, width::Int) = Edit(startline, endline, repeat(" ", width)) =#
 nest(startline, endline, width::Int) = Edit(startline, endline, "\n" * repeat(" ", width))
-
 
 mutable struct EditTree{T<:CSTParser.AbstractEXPR}
     startline::Int
@@ -248,6 +245,7 @@ function flatten(x::CSTParser.EXPR{CSTParser.MacroName}, s::State)
     return EditTree{typeof(x)}(edits)
 end
 
+# TODO: Block and/or If nodes causing trouble
 function flatten(x::CSTParser.EXPR{CSTParser.Block}, s::State; ignore_single_line=false)
     sl = !ignore_single_line ? cursor_loc(s)[1] == cursor_loc(s, s.offset+x.span-1)[1] : false
     #= @info "SINGLE LINE", sl =#
@@ -462,69 +460,101 @@ end
 # newlines after i == 2, 5 if elseif 4 otherwise
 function flatten(x::CSTParser.EXPR{CSTParser.If}, s::State)
     edits = Union{Edit, EditTree}[]
+    push!(edits, flatten(x.args[1], s))
+    #= if x.args[1] isa CSTParser.KEYWORD && x.args[1].kind == Tokens.IF =#
+    #=     for (i, a) in enumerate(x) =#
+    #=         if i == 2 =#
+    #=             e = flatten(a, s) =#
+    #=             e = merge(e, "\n") =#
+    #=         elseif i == 3 =#
+    #=             e = flatten(a, s; ignore_single_line=true) =#
+    #=         elseif i == 4 && x.args[4].kind == Tokens.ELSE =#
+    #=             e = flatten(a, s) =#
+    #=             #= e = merge(e, "\n") =# =#
+    #=         elseif i == 5 =#
+    #=             if x.args[4].kind == Tokens.ELSE =#
+    #=                 e = flatten(a, s; ignore_single_line=true) =#
+    #=             else =#
+    #=                 e = flatten(a, s) =#
+    #=             end =#
+    #=         else =#
+    #=             e = flatten(a, s) =#
+    #=         end =#
+    #=         push!(edits, e) =#
+    #=     end =#
+    #= else =#
+    #=     e = flatten(x.args[1], s) =#
+    #=     e = merge(e, "\n") =#
+    #=     push!(edits, e) =#
+    #=  =#
+    #=     e = flatten(x.args[2], s; ignore_single_line=true) =#
+    #=     push!(edits, e) =#
+    #=  =#
+    #=     if length(x) > 2 =#
+    #=         if x.args[3].kind == Tokens.ELSE =#
+    #=             e = flatten(x.args[3], s) =#
+    #=             e = merge(e, "\n") =#
+    #=             push!(edits, e) =#
+    #=         else =#
+    #=             e = flatten(x.args[3], s) =#
+    #=             push!(edits, e) =#
+    #=         end =#
+    #=  =#
+    #=         if x.args[3].kind == Tokens.ELSE =#
+    #=             e = flatten(x.args[4], s; ignore_single_line=true) =#
+    #=             push!(edits, e) =#
+    #=         else =#
+    #=             e = flatten(x.args[4], s) =#
+    #=             #= e = merge(e, "\n") =# =#
+    #=             push!(edits, e) =#
+    #=         end =#
+    #=     end =#
+    #= end =#
+    #= return EditTree{typeof(x)}(edits) =#
+    #
+
     if x.args[1] isa CSTParser.KEYWORD && x.args[1].kind == Tokens.IF
-        for (i, a) in enumerate(x)
-            if i == 2
-                e = flatten(a, s)
-                e = merge(e, "\n")
-            elseif i == 3
-                e = flatten(a, s; ignore_single_line=true)
-            elseif i == 4 && x.args[4].kind == Tokens.ELSE
-                e = flatten(a, s)
-                e = merge(e, "\n")
-            elseif i == 5
-                if x.args[4].kind == Tokens.ELSE
-                    e = flatten(a, s; ignore_single_line=true)
-                else
-                    e = flatten(a, s)
-                end
+        push!(edits, flatten(x.args[2], s))
+        push!(edits, flatten(x.args[3], s; ignore_single_line=true))
+        push!(edits, flatten(x.args[4], s))
+        if length(x.args) > 4
+            # this either else or elseif
+            if x.args[4].kind == Tokens.ELSEIF
+                push!(edits, flatten(x.args[5], s))
             else
-                e = flatten(a, s)
+                push!(edits, flatten(x.args[5], s; ignore_single_line=true))
             end
-            push!(edits, e)
+            # END
+            push!(edits, flatten(x.args[6], s))
         end
     else
-        e = flatten(x.args[1], s)
-        e = merge(e, "\n")
-        push!(edits, e)
-
-        e = flatten(x.args[2], s; ignore_single_line=true)
-        push!(edits, e)
-
-        if length(x) > 2
-            if x.args[3].kind == Tokens.ELSE
-                e = flatten(x.args[3], s)
-                e = merge(e, "\n")
-                push!(edits, e)
+        push!(edits, flatten(x.args[2], s; ignore_single_line=true))
+        if length(x.args) > 2
+            push!(edits, flatten(x.args[3], s))
+            # this either else or elseif
+            if x.args[3].kind == Tokens.ELSEIF
+                push!(edits, flatten(x.args[4], s))
             else
-                e = flatten(x.args[3], s)
-                push!(edits, e)
-            end
-
-            if x.args[3].kind == Tokens.ELSE
-                e = flatten(x.args[4], s; ignore_single_line=true)
-                push!(edits, e)
-            else
-                e = flatten(x.args[4], s)
-                #= e = merge(e, "\n") =#
-                push!(edits, e)
+                push!(edits, flatten(x.args[4], s; ignore_single_line=true))
             end
         end
     end
     return EditTree{typeof(x)}(edits)
 end
 
-function flatten(x::CSTParser.EXPR{T}, s::State) where T <: Union{CSTParser.BinaryOpCall,CSTParser.BinarySyntaxOpCall}
+function flatten(x::Union{CSTParser.BinaryOpCall,CSTParser.BinarySyntaxOpCall}, s::State) 
     edits = Union{Edit, EditTree}[]
     arg1 = flatten(x.arg1, s)
     push!(edits, arg1)
     op = flatten(x.op, s)
-    if x.op.kind == Tokens.EX_OR
+    if CSTParser.precedence(x.op) in (8, 13, 14, 16) && x.op.kind != Tokens.ANON_FUNC
+    elseif x.op.kind == Tokens.EX_OR
         op = merge(" ", op)
     else
         op = merge(" ", op)
         op = merge(op, " ")
     end
+    #= @info op =#
     #= arg1 = merge(arg1, op) =#
     push!(edits, op)
     arg2 = flatten(x.arg2, s)
@@ -718,76 +748,87 @@ function flatten(x::CSTParser.EXPR{T}, s::State) where T <: Union{CSTParser.Comp
     return EditTree{typeof(x)}(edits)
 end
 
-#= if (e.startline == e.startline indent == nothing =#
-function print_tree(io::IOBuffer, t::EditTree{T}, s::State, indent::Indent=nothing) where {T}
-    for (i, j) in zip(1:length(t.edits)-1, 2:length(t.edits))
-        e1 = t.edits[i]
-        e2 = t.edits[j]
 
-        indent_block = e1 isa EditTree{CSTParser.EXPR{CSTParser.Block}} && !t.single_line
-        indent_block && (s.indents += 1)
-        print_tree(io, e1, s)
-        indent_block && (s.indents -= 1)
-
-        comments = gather_comments(s, e1.endline+1, e2.startline-1)
-        #= write(io, w) =#
-        write(io, comments)
+print_tree(io::IOBuffer, t::Edit) = write(io, t.text)
+function print_tree(io::IOBuffer, t::EditTree)
+    for e in t.edits
+        print_tree(io, e)
     end
-    print_tree(io, t.edits[end], s)
-    return nothing
-end
-
-function print_tree(io::IOBuffer, t::EditTree{CSTParser.EXPR{CSTParser.Block}}, s::State, indent::Indent=nothing)
-    #= @info "INDENTS", s.indents =#
-    w = repeat(" ", s.indents * s.indent_width)
-    for (i, j) in zip(1:length(t.edits)-1, 2:length(t.edits))
-        e1 = t.edits[i]
-        e2 = t.edits[j]
-        write(io, w)
-        print_tree(io, e1, s)
-        comments = gather_comments(s, e1.endline+1, e2.startline-1)
-        write(io, comments)
-    end
-    print_tree(io, t.edits[end], s)
-    return nothing
 end
 
 
-function print_tree(io::IOBuffer, e::Edit, s::State, indent::Indent=nothing)
-    write(io, e.text)
-    return nothing
-end
+#= function print_tree(io::IOBuffer, t::EditTree{T}, s::State, indent::Indent=nothing) where {T} =#
+#=     for (i, j) in zip(1:length(t.edits)-1, 2:length(t.edits)) =#
+#=         e1 = t.edits[i] =#
+#=         e2 = t.edits[j] =#
+#=  =#
+#=         indent_block = e1 isa EditTree{CSTParser.EXPR{CSTParser.Block}} && !t.single_line =#
+#=         indent_block && (s.indents += 1) =#
+#=         print_tree(io, e1, s) =#
+#=         indent_block && (s.indents -= 1) =#
+#=  =#
+#=         #= comments = gather_comments(s, e1.endline+1, e2.startline-1) =# =#
+#=         #= write(io, w) =# =#
+#=         #= write(io, comments) =# =#
+#=     end =#
+#=     print_tree(io, t.edits[end], s) =#
+#=     return nothing =#
+#= end =#
+#=  =#
+#= function print_tree(io::IOBuffer, t::EditTree{CSTParser.EXPR{CSTParser.Block}}, s::State, indent::Indent=nothing) =#
+#=     #= @info "INDENTS", s.indents =# =#
+#=     w = repeat(" ", s.indents * s.indent_width) =#
+#=     for (i, j) in zip(1:length(t.edits)-1, 2:length(t.edits)) =#
+#=         e1 = t.edits[i] =#
+#=         e2 = t.edits[j] =#
+#=         write(io, w) =#
+#=         print_tree(io, e1, s) =#
+#=         #= comments = gather_comments(s, e1.endline+1, e2.startline-1) =# =#
+#=         #= write(io, comments) =# =#
+#=     end =#
+#=     print_tree(io, t.edits[end], s) =#
+#=     return nothing =#
+#= end =#
+#=  =#
+#=  =#
+#= function print_tree(io::IOBuffer, e::Edit, s::State, indent::Indent=nothing) =#
+#=     write(io, e.text) =#
+#=     return nothing =#
+#= end =#
 
-function gather_comments(s::State, endline::Int, startline::Int)
-    #= w = repeat(" ", indent == nothing ? s.indents * s.indent_width : indent) =#
-    w = repeat(" ", s.indents * s.indent_width)
-    comments = ""
-    comment_range = endline:startline
-    for (i, l) in enumerate(comment_range)
-        v = s.doc.text[s.doc.ranges[l]]
+#= function gather_comments(s::State, endline::Int, startline::Int) =#
+#=     #= w = repeat(" ", indent == nothing ? s.indents * s.indent_width : indent) =# =#
+#=     w = repeat(" ", s.indents * s.indent_width) =#
+#=     comments = "" =#
+#=     comment_range = endline:startline =#
+#=     for (i, l) in enumerate(comment_range) =#
+#=         v = s.doc.text[s.doc.ranges[l]] =#
+#=  =#
+#=         #= @info l, v =# =#
+#=  =#
+#=         # remove extra newlines =#
+#=         if i < length(comment_range) && v == "\n" =#
+#=             vn = s.doc.text[s.doc.ranges[l+1]] =#
+#=             v == vn && (continue) =#
+#=         end =#
+#=  =#
+#=         v == "\n" && (comments = rstrip(comments, ' ') * v * w; continue) =#
+#=  =#
+#=         i = first(findfirst(x -> !isspace(x), v)) =#
+#=         if v[i] == '#' =#
+#=             comments *= v[i:end] * w =#
+#=         else =#
+#=             # This captures the possible additional indentation in a docstring =#
+#=             i = max(min(i, s.indents-1 * s.indent_width), 1) =#
+#=             comments *= v[i:end] * w =#
+#=         end =#
+#=     end =#
+#=  =#
+#=     #= @info comments =# =#
+#=     return comments =#
+#= end =#
 
-        #= @info l, v =#
 
-        # remove extra newlines
-        if i < length(comment_range) && v == "\n"
-            vn = s.doc.text[s.doc.ranges[l+1]]
-            v == vn && (continue)
-        end
-
-        v == "\n" && (comments = rstrip(comments, ' ') * v * w; continue)
-
-        i = first(findfirst(x -> !isspace(x), v))
-        if v[i] == '#'
-            comments *= v[i:end] * w
-        else
-            # This captures the possible additional indentation in a docstring
-            i = max(min(i, s.indents-1 * s.indent_width), 1)
-            comments *= v[i:end] * w
-        end
-    end
-    #= @info comments =#
-    return comments
-end
 
 # EditTree
 #

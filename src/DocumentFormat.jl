@@ -1,3 +1,39 @@
+#
+# One pass requires use of .span in order to check lengths.
+#
+# PROBLEM: The number of characters in .span doesn't equal a pretty printed version of the CST.
+# Ex: (a,b) should be 6 since the pretty printed version is (a, b) but span will return 5
+# 
+# If A comes before B, then if A has to be indented B will also need to be indented.
+# But we could indent B without indenting A. Assuming A and B don't need to be joined:
+#
+#   E1 where E2
+#
+# A is "E1 where "
+# B is "E2"
+#
+# Anyway ... here's how this will go.
+#
+# 1) Prettify the CST, basically this is
+# a CST but with prettified text instead of a CST node.
+# 2) Indent pass
+# 3) Comment pass
+# 3) Profit (jk no money in OSS)
+#
+# ## Prettify pass
+#
+# At this stage just output the prettified version of the CST node. Don't worry about proper
+# indentation/nesting.
+#
+# ## Indent pass
+#
+# Indent based on indent width multiplier and desired maximum width.
+#
+# ## Comment pass
+#
+# The start and end line information will allow us to collect the comments in between
+# edits.
+# 
 module DocumentFormat
 using CSTParser
 import CSTParser.Tokenize.Tokens
@@ -57,34 +93,35 @@ cursor_loc(s::State) = cursor_loc(s, s.offset)
 
 const Indent = Union{Int, Nothing}
 
-include("pretty.jl")
-#= include("flatten.jl") =#
+#= include("pretty.jl") =#
+include("flatten.jl")
 
-#= function format(text::String; indent_width=4, max_width=80) =#
-#=     d = Document(text, newline_ranges(text)) =#
-#=     s = State(indent_width, max_width, 0, 1, 0, d) =#
-#=     x = CSTParser.parse(text, true) =#
-#=     edits = flatten(x, s) =#
-#=     return edits =#
-#=     io = IOBuffer() =#
-#=     print_tree(io, edits, s) =#
-#=     comments = gather_comments(s, edits.endline+1, length(s.doc.ranges)-1) =#
-#=     write(io, comments) =#
-#=     return String(take!(io)) =#
-#= end =#
-
-function format(text::AbstractString; indent_width=4, max_width=80)
+function format(text::String; indent_width=4, max_width=80)
     d = Document(text, newline_ranges(text))
     s = State(indent_width, max_width, 0, 1, 0, d)
     x = CSTParser.parse(text, true)
-    e = pretty(x, s)::Edit
-    if e.startline != 1
-        e = merge_edits(Edit(1, 1, d.text[d.ranges[1]]), e, s)
-    end
-    if e.endline != length(d.ranges)
-        e = merge_edits(e, Edit(length(d.ranges), length(d.ranges), text[d.ranges[end]]), s)
-    end
-    e.text
+    edits = flatten(x, s)
+    @info "" edits
+    #= return edits =#
+    io = IOBuffer()
+    print_tree(io, edits)
+    #= comments = gather_comments(s, edits.endline+1, length(s.doc.ranges)-1) =#
+    #= write(io, comments) =#
+    return String(take!(io))
 end
+
+#= function format(text::AbstractString; indent_width=4, max_width=80) =#
+#=     d = Document(text, newline_ranges(text)) =#
+#=     s = State(indent_width, max_width, 0, 1, 0, d) =#
+#=     x = CSTParser.parse(text, true) =#
+#=     e = pretty(x, s)::Edit =#
+#=     if e.startline != 1 =#
+#=         e = merge_edits(Edit(1, 1, d.text[d.ranges[1]]), e, s) =#
+#=     end =#
+#=     if e.endline != length(d.ranges) =#
+#=         e = merge_edits(e, Edit(length(d.ranges), length(d.ranges), text[d.ranges[end]]), s) =#
+#=     end =#
+#=     e.text =#
+#= end =#
 
 end

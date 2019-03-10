@@ -1,28 +1,3 @@
-# ###
-# ### Nesting
-# ###
-#
-# TODO:
-#
-# ChainOpCall [maybe]
-# Comparison [maybe]
-#
-# DONE
-#
-# MacroCall [x]
-# BinaryOpSyntaxCall/BinaryOpCall [x]
-# Conditional [x]
-# WhereOpCall [x]
-# Call [x]
-# Parameters [x]
-# TupleH [x]
-# Vect [x]
-# InvisBrackets [x]
-# Braces [x]
-# Export [x]
-# Import [x]
-# Using [x]
-#
 
 struct Edit
     startline::Int
@@ -34,18 +9,17 @@ end
 Base.length(e::Edit) = length(e.text)
 
 
-# Returns an Edit, a prettified text representation of x
-# along with the lines containing x in the original file.
-#
-# a
-#
-# comment 1
-#
-# comment 2
-#
-# b
-#
-# ==
+"""
+Returns an Edit, a prettified text representation of x
+along with the lines containing x in the original file.
+
+`a`
+
+# comments
+# ...
+
+`b`
+"""
 function merge_edits(a::Edit, b::Edit, s::State; join_lines=false, indent::Indent=nothing)
 
     if (a.startline == b.startline || a.endline == b.endline) && indent == nothing
@@ -726,21 +700,39 @@ end
 
 # A where B
 # should format B prior to A
+#
+# line_offset_A = ...
+# line_offset_B = ...
+# indent_A = ...
+# indent_B = ...
+#
+# line_offset
 function pretty(x::CSTParser.WhereOpCall, s::State, indent::Indent=nothing)
     indent = indent == nothing ? s.line_offset : indent
     line_offset = indent
     @info "WHEREOP" s.line_offset indent
 
-    e = pretty(x.arg1, s, indent)
-    s.line_offset += 1
-    e = merge_edits(e, " " * pretty(x.op, s) * " ", s; join_lines=true)
-    s.line_offset += 1
+    line_offset_A = line_offset
+    line_offset_B = line_offset_A + x.arg1.span + x.op.span + 2
+    indent_A = line_offset_A
+    indent_B = line_offset_B
+    CSTParser.is_lbrace(x.args[1]) && (indent_B += 1)
 
-    last_line = findlast("\n" * repeat(" ",  indent), e.text)
-    indent += last_line !== nothing ? length(e) - last(last_line) : length(e)
-    @info "WHEREOP has indent changed ?" line_offset indent
+    #= e = pretty(x.arg1, s, indent) =#
+    #= s.line_offset += 1 =#
+    #= e = merge_edits(e, " " * pretty(x.op, s) * " ", s; join_lines=true) =#
+    #= s.line_offset += 1 =#
+    #=  =#
+    #= last_line = findlast("\n" * repeat(" ",  indent), e.text) =#
+    #= indent += last_line !== nothing ? length(e) - last(last_line) : length(e) =#
+    #= @info "WHEREOP has indent changed ?" line_offset indent =#
+    #=  =#
+    #= CSTParser.is_lbrace(x.args[1]) && (indent += 1) =#
+    #
 
-    CSTParser.is_lbrace(x.args[1]) && (indent += 1)
+    e = ""
+    indent = indent_B
+    s.line_offset = line_offset_B
 
     edits = Edit[]
     e2 = ""
@@ -755,12 +747,11 @@ function pretty(x::CSTParser.WhereOpCall, s::State, indent::Indent=nothing)
     end
     push!(edits, e2)
 
-    #= @info "EDITS", edits =#
+    @info "EDITS", edits
 
     line_offset = indent
-    #= @info line_offset =#
     for (i, ei) in enumerate(edits)
-        #= @info i, ei, line_offset =#
+        @info "" i ei indent line_offset line_offset + length(ei)
         if should_nest(ei, line_offset, indent, s.max_width) && i > 1
             e = merge_edits(e, ei, s; indent=indent)
             line_offset = indent
@@ -769,7 +760,16 @@ function pretty(x::CSTParser.WhereOpCall, s::State, indent::Indent=nothing)
         end
         line_offset += length(ei)
     end
-    e
+
+    indent = indent_A
+    s.line_offset = line_offset_A
+
+    e1 = pretty(x.arg1, s, indent)
+    s.line_offset += 1
+    e1 = merge_edits(e1, " " * pretty(x.op, s) * " ", s; join_lines=true)
+    s.line_offset += 1
+
+    merge_edits(e1, e, s)
 end
 
 # C ? E1 : E2
